@@ -93,8 +93,11 @@ Create a SharePoint List with these columns (Single line of text):
 | Currency | Single line of text |
 | PaymentTerms | Single line of text |
 
-## Running the Server
+## Running the Application
 
+This system consists of a backend (FastAPI) and a frontend (Streamlit).
+
+### 1. Start the FastAPI Server
 ```bash
 # Activate virtual environment
 .venv\Scripts\activate
@@ -102,8 +105,19 @@ Create a SharePoint List with these columns (Single line of text):
 # Start server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+Wait for the console to show "Model loaded. Ready to process invoices."
 
-First run will download the LLM model (~1GB).
+### 2. Start the Streamlit UI
+Open a **new terminal** window:
+```bash
+# Navigate to project and activate venv
+cd d:\invoice_parser
+.venv\Scripts\activate
+
+# Start UI
+streamlit run app/ui.py
+```
+The browser will automatically open at http://localhost:8501
 
 ## API Usage
 

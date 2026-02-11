@@ -7,9 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import ParseResponse, ErrorResponse
 from app.utils import save_upload_file, cleanup_temp_file, validate_file_type, clean_text
-from app.ocr import extract_text
+from app.ocr import extract_text, init_ocr
 from app.llm_parser import parse_invoice_text, init_model
 from app.sharepoint import create_list_item, is_sharepoint_configured
+from app.config import OCR_LANGUAGES
 
 
 # =============================================================================
@@ -17,11 +18,18 @@ from app.sharepoint import create_list_item, is_sharepoint_configured
 # =============================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load LLM model at startup."""
+    """Load OCR and LLM models at startup."""
     print("Starting Invoice Parser API...")
     print(f"SharePoint configured: {is_sharepoint_configured()}")
+    
+    # Initialize OCR
+    print(f"Initializing EasyOCR with languages: {OCR_LANGUAGES}")
+    init_ocr(OCR_LANGUAGES)
+    
+    # Initialize LLM
     init_model()
-    print("Model loaded. Ready to process invoices.")
+    
+    print("All models loaded. Ready to process invoices.")
     yield
     print("Shutting down...")
 
@@ -135,11 +143,11 @@ async def parse_invoice(file: UploadFile = File(...)):
 @app.get("/health")
 async def health_check():
     """Detailed health check."""
-    from app.config import DEVICE, MODEL_NAME
+    from app.config import GROQ_MODEL
     
     return {
         "status": "healthy",
-        "model": MODEL_NAME,
-        "device": DEVICE,
+        "model": GROQ_MODEL,
+        "provider": "Groq API",
         "sharepoint_configured": is_sharepoint_configured()
     }

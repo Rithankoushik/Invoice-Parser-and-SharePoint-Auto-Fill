@@ -15,14 +15,17 @@ TEMP_DIR = BASE_DIR / "temp"
 TEMP_DIR.mkdir(exist_ok=True)
 
 # =============================================================================
-# LLM Configuration
+# LLM Configuration - Groq API
 # =============================================================================
-MODEL_NAME = os.getenv("MODEL_NAME", "google/flan-t5-base")
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", "512"))
-
-# Device configuration - auto-detect GPU
-import torch
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+# Best models for structured JSON extraction (as of 2025):
+# - llama-3.1-8b-instant (fastest, recommended)
+# - mixtral-8x7b-32768 (good balance of speed and accuracy)
+# - llama-3.1-70b-versatile (decommissioned - do not use)
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+# Fallback models to try if primary fails
+GROQ_FALLBACK_MODELS = ["mixtral-8x7b-32768", "llama-3.1-70b-versatile"]
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", "1024"))
 
 # =============================================================================
 # Azure / SharePoint Configuration
@@ -38,9 +41,22 @@ SHAREPOINT_LIST_ID = os.getenv("SHAREPOINT_LIST_ID", "")
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 # =============================================================================
-# OCR Configuration
+# OCR Configuration - EasyOCR
 # =============================================================================
-TESSERACT_CMD = os.getenv("TESSERACT_CMD", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+# EasyOCR languages - comma-separated list (e.g., "en,hi" for English and Hindi)
+# Common options: en, hi, ta, te, kn, mr, gu, pa, bn, ml, or, as
+OCR_LANGUAGES = os.getenv("OCR_LANGUAGES", "en").split(",")
+OCR_LANGUAGES = [lang.strip() for lang in OCR_LANGUAGES if lang.strip()]
+
+# OCR Performance Settings
+OCR_DPI = int(os.getenv("OCR_DPI", "200"))  # Lower DPI = faster (150-200 recommended, default was 300)
+# OCR_MAX_PAGES: 0 = process all pages, N = process first N pages only
+# For production with multi-page invoices, set to 0 to process all pages
+OCR_MAX_PAGES = int(os.getenv("OCR_MAX_PAGES", "0"))  # Default: 0 (all pages) - Set to 2 for faster testing
+OCR_MAX_IMAGE_SIZE = int(os.getenv("OCR_MAX_IMAGE_SIZE", "2000"))  # Max width/height in pixels (resize if larger)
+OCR_FAST_MODE = os.getenv("OCR_FAST_MODE", "true").lower() == "true"  # Skip heavy preprocessing for speed
+
+# Poppler path for PDF conversion (only needed for PDF files)
 POPPLER_PATH = os.getenv("POPPLER_PATH", None)  # Set if not in PATH
 
 # =============================================================================
