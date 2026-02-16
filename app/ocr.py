@@ -1,5 +1,3 @@
-# OCR Layer - EasyOCR
-# Handles PDF and image text extraction using EasyOCR for better accuracy
 import easyocr
 import cv2
 import numpy as np

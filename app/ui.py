@@ -74,14 +74,6 @@ if uploaded_file is not None:
                         else:
                             st.warning(f" **SharePoint Status:** {sp_status}. {error_msg}")
                         
-                        # Display results in a nice format
-                        st.subheader("Extracted Data")
-                        
-                        # Create a table/dataframe look for the JSON fields
-                        for key, value in parsed_data.items():
-                            label = key.replace("_", " ").title()
-                            st.text_input(label, value=str(value), disabled=True)
-                        
                         # Raw JSON
                         with st.expander("View Raw JSON"):
                             st.json(parsed_data)
