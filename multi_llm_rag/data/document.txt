@@ -1,0 +1,48 @@
+
+Multi-LLM RAG System Documentation
+
+Introduction
+============
+This is a Retrieval-Augmented Generation (RAG) system that uses multiple
+language models to provide accurate answers based on your documents and data.
+
+Key Features
+============
+1. Multi-Model Architecture
+   - Uses different Groq models for different tasks
+   - Llama 3.1 8B for fast responses
+   - Mixtral 8x7B for reasoning tasks
+   - Llama 3.1 70B for complex code generation
+
+2. Hybrid Retrieval
+   - Document retrieval from PDF, TXT, DOCX files
+   - SQL database querying for structured data
+   - Automatic routing between retrieval methods
+
+3. Vector Storage
+   - ChromaDB for efficient vector storage
+   - HuggingFace embeddings for semantic search
+   - Fast similarity search
+
+How It Works
+============
+1. User submits a query
+2. System classifies the task type (reasoning/code/fast)
+3. Relevant context is retrieved from documents and/or database
+4. Appropriate LLM generates answer based on context
+
+Use Cases
+=========
+- Customer support with company documentation
+- Internal knowledge base Q&A
+- Code assistant for programming questions
+- Data analysis with natural language
+
+Getting Started
+==============
+1. Add your Groq API key to .env file
+2. Place documents in the data/ folder
+3. Optionally create a SQLite database
+4. Run the application
+
+For more information, visit the documentation.

@@ -10,7 +10,12 @@ import streamlit as st
 from io import BytesIO
 from PIL import Image
 
-from vision_core import process_document, pdf_bytes_to_images
+from vision_core import (
+    process_document,
+    pdf_bytes_to_images,
+    upload_to_sharepoint,
+    upload_to_gforms_sheet,
+)
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -112,16 +117,26 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### ⚙️ How It Works")
     st.markdown("""
-    1. **Upload** a PDF or image invoice
-    2. **Vision model** (`LLaMA 4 Scout`) reads all text
-    3. **LLM** (`LLaMA 3.1 8B`) extracts structured JSON
-    4. **Review** the raw text and JSON output
+    1. **Upload** a PDF or image invoice  
+    2. **Vision model** (`LLaMA 4 Scout`) reads all text  
+    3. **LLM** (`LLaMA 3.1 8B`) extracts structured JSON  
+    4. *(Optional)* **Google Form** data is merged to auto-fill fields  
+    5. **Review** the raw text and JSON output
     """)
     st.divider()
+
     st.markdown("### 🧠 Models Used")
     st.code("Vision: meta-llama/llama-4-scout-17b-16e-instruct\nJSON  : llama-3.1-8b-instant", language="text")
     st.divider()
-    st.caption("Powered by Groq API • Built with Streamlit")
+
+    st.markdown("### 📥 Google Form export")
+    st.markdown(
+        "Use the **“Upload to Google Form (Sheet)”** button under the JSON "
+        "to append the extracted invoice data as a new response in your Form’s sheet."
+    )
+
+    st.divider()
+    st.caption("Powered by Groq API • Built with Streamlit • Google Form sheet export")
 
 # ── File uploader ────────────────────────────────────────────────────────────
 uploaded_file = st.file_uploader(
@@ -165,42 +180,77 @@ if uploaded_file is not None:
             try:
                 raw_text, structured_data = process_document(file_bytes, filename)
 
-                # ── Raw text output ──────────────────────────────────────────
-                st.markdown("---")
-                st.markdown('<div class="result-card">', unsafe_allow_html=True)
-                st.markdown("### 📝 Extracted Raw Text")
-                st.markdown('<span class="badge-success">✓ Extraction Complete</span>', unsafe_allow_html=True)
-                st.text_area(
-                    "Raw OCR Output",
-                    value=raw_text,
-                    height=300,
-                    label_visibility="collapsed",
-                )
-                # ── JSON output ──────────────────────────────────────────────
-                st.markdown('<div class="result-card">', unsafe_allow_html=True)
-                st.markdown("### 📊 Structured Invoice JSON")
-
-                if structured_data:
-                    st.markdown('<span class="badge-success">✓ Parsing Complete</span>', unsafe_allow_html=True)
-                    st.json(structured_data, expanded=True)
-
-                    # Download button
-                    json_str = json.dumps(structured_data, indent=2, ensure_ascii=False)
-                    st.download_button(
-                        label="⬇️ Download JSON",
-                        data=json_str,
-                        file_name=f"{filename.rsplit('.', 1)[0]}_parsed.json",
-                        mime="application/json",
-                    )
-                else:
-                    st.markdown('<span class="badge-error">✗ JSON parsing failed</span>', unsafe_allow_html=True)
-                    st.warning("The LLM did not return valid JSON. The raw text above may still be useful.")
-
-                st.markdown('</div>', unsafe_allow_html=True)
-
+                # Store in session state so it persists across reruns
+                st.session_state["parsed_raw_text"] = raw_text
+                st.session_state["parsed_json"] = structured_data
+                st.session_state["parsed_filename"] = filename
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
                 st.info("Check that your `GROQ_API_KEY` is set correctly in the `.env` file.")
+
+    # ── Display results (from session state) ─────────────────────────────────
+    if "parsed_json" in st.session_state and st.session_state["parsed_json"] is not None:
+        raw_text = st.session_state["parsed_raw_text"]
+        structured_data = st.session_state["parsed_json"]
+        fname = st.session_state.get("parsed_filename", "invoice")
+
+        # ── Raw text output ──────────────────────────────────────────
+        st.markdown("---")
+        st.markdown('<div class="result-card">', unsafe_allow_html=True)
+        st.markdown("### 📝 Extracted Raw Text")
+        st.markdown('<span class="badge-success">✓ Extraction Complete</span>', unsafe_allow_html=True)
+        st.text_area(
+            "Raw OCR Output",
+            value=raw_text,
+            height=300,
+            label_visibility="collapsed",
+        )
+
+        # ── JSON output ──────────────────────────────────────────────
+        st.markdown('<div class="result-card">', unsafe_allow_html=True)
+        st.markdown("### 📊 Structured Invoice JSON")
+        st.markdown('<span class="badge-success">✓ Parsing Complete</span>', unsafe_allow_html=True)
+        st.json(structured_data, expanded=True)
+
+        # ── Action buttons ───────────────────────────────────────────
+        btn_col1, btn_col2, btn_col3 = st.columns(3)
+
+        with btn_col1:
+            json_str = json.dumps(structured_data, indent=2, ensure_ascii=False)
+            st.download_button(
+                label="⬇️ Download JSON",
+                data=json_str,
+                file_name=f"{fname.rsplit('.', 1)[0]}_parsed.json",
+                mime="application/json",
+            )
+
+        with btn_col2:
+            if st.button("📤 Upload to SharePoint", type="primary"):
+                with st.spinner("Uploading to SharePoint..."):
+                    result = upload_to_sharepoint(structured_data)
+                    if result["status"] == "success":
+                        st.success("✅ Successfully uploaded to SharePoint List!")
+                    elif result["status"] == "skipped":
+                        st.warning(f"⚠️ Skipped: {result['error']}")
+                    else:
+                        st.error(f"❌ Upload failed: {result['error']}")
+
+        with btn_col3:
+            if st.button("📥 Upload to Google Form (Sheet)"):
+                with st.spinner("Uploading to Google Form responses sheet..."):
+                    result = upload_to_gforms_sheet(structured_data)
+                    if result["status"] == "success":
+                        st.success("✅ Successfully appended to Google Form responses sheet!")
+                    elif result["status"] == "skipped":
+                        st.warning(f"⚠️ Skipped: {result['error']}")
+                    else:
+                        st.error(f"❌ Upload failed: {result['error']}")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    elif "parsed_json" in st.session_state and st.session_state["parsed_json"] is None:
+        st.markdown('<span class="badge-error">✗ JSON parsing failed</span>', unsafe_allow_html=True)
+        st.warning("The LLM did not return valid JSON. The raw text above may still be useful.")
 
 # ── Footer ───────────────────────────────────────────────────────────────────
 st.divider()

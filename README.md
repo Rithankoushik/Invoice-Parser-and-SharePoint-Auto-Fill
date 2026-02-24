@@ -1,206 +1,300 @@
-# Invoice Parser + SharePoint Auto-Fill
+# Invoice Parser + SharePoint + Vision UI + Google Forms
 
-A production-grade, local-first Invoice Parsing System that extracts structured data from invoices using OCR and LLM, then auto-fills Microsoft SharePoint Lists.
+End‑to‑end invoice parsing system that:
+- Extracts text from invoices (PDF / images) using **EasyOCR** or **Groq Vision (LLaMA)**  
+- Parses structured JSON using **Groq LLMs**  
+- Sends data to **SharePoint** and optionally **Google Forms / Sheets**  
+- Exposes both a **FastAPI API** and a **Streamlit Vision UI**
 
-## Features
+---
 
-- **OCR Layer**: Tesseract + OpenCV preprocessing (grayscale, adaptive thresholding)
-- **LLM Parsing**: Local Hugging Face model (google/flan-t5-base) with GPU acceleration
-- **SharePoint Integration**: Auto-fill SharePoint Lists via Microsoft Graph API
-- **REST API**: FastAPI endpoint for easy integration
-- **Windows + NVIDIA GPU**: Optimized for RTX 3050 (4GB VRAM)
+## 1. Features
 
-## Prerequisites
+- **Backend (app/)**  
+  - OCR with **EasyOCR** (GPU‑accelerated, good for invoices)  
+  - LLM parsing with **Groq API** (e.g. `llama-3.1-8b-instant`)  
+  - SharePoint auto‑fill via Microsoft Graph API  
+  - FastAPI endpoint `/parse-invoice`
 
-### 1. Install Tesseract OCR
-Download and install from: https://github.com/UB-Mannheim/tesseract/wiki
+- **Vision UI (vision_model/)**  
+  - Uses **Groq LLaMA Vision** to read invoices directly (no local OCR)  
+  - Uses **Groq JSON model** to produce rich nested JSON (`Vendor`, `Buyer`, `Items`, `Totals`, `PaymentDetails`)  
+  - Can **append parsed data to a Google Form’s response Sheet**
 
-Default path: `C:\Program Files\Tesseract-OCR\tesseract.exe`
+- **Multi‑LLM RAG (multi_llm_rag/)**  
+  - RAG demo using LangChain + Groq (separate app; optional)
 
-### 2. Install Poppler (for PDF support)
-Download from: https://github.com/osborn/wnd/releases
+---
 
-Extract and add `bin` folder to PATH, or set `POPPLER_PATH` in `.env`
+## 2. Prerequisites
 
-### 3. Python 3.11+
+- **OS**: Windows 10/11 (64‑bit)
+- **Python**: 3.11+
+- **GPU**: RTX 3050 4GB (optional but recommended)
+- **Accounts**:
+  - Groq account + API key
+  - Azure AD app + SharePoint site/list
+  - Google Cloud service account + Google Form / Sheet
+
+Check Python:
 ```bash
-python --version  # Should be 3.11+
+python --version
 ```
 
-## Installation
+---
+
+## 3. Installation
 
 ```bash
-# Clone/navigate to project
-cd d:\invoice_parser
+cd D:\invoice_parser
 
-# Create virtual environment
+# Create venv
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\activate
 
-# Install dependencies
+# Install deps
 pip install -r requirements.txt
-
-# Copy and configure environment
-copy .env.example .env
-# Edit .env with your Azure/SharePoint credentials
 ```
 
-## Azure App Registration (for SharePoint)
+> `.gitignore` already ignores `.venv`, `.env`, and your temp files.
 
-1. Go to [Azure Portal](https://portal.azure.com) → Azure Active Directory → App registrations
-2. Click **New registration**
-3. Name: `invoice-parser-app`
-4. Supported account types: Single tenant
-5. Click **Register**
+---
 
-### Get Credentials
-- **Client ID**: Overview → Application (client) ID
-- **Tenant ID**: Overview → Directory (tenant) ID
-- **Client Secret**: Certificates & secrets → New client secret
+## 4. Environment Configuration (`.env`)
 
-### Add API Permissions
-1. API permissions → Add a permission
-2. Microsoft Graph → Application permissions
-3. Add: `Sites.ReadWrite.All`
-4. Click **Grant admin consent**
+Create `.env` in project root (next to `requirements.txt`):
 
-### Get SharePoint IDs
-
-**Site ID:**
-```
-GET https://graph.microsoft.com/v1.0/sites/{your-tenant}.sharepoint.com:/sites/{site-name}
-```
-
-**List ID:**
-```
-GET https://graph.microsoft.com/v1.0/sites/{site-id}/lists
-```
-
-## SharePoint List Setup
-
-Create a SharePoint List with these columns (Single line of text):
-
-| Column Name | Type |
-|-------------|------|
-| InvoiceNumber | Single line of text |
-| InvoiceDate | Single line of text |
-| VendorName | Single line of text |
-| VendorGST | Single line of text |
-| CustomerName | Single line of text |
-| Subtotal | Single line of text |
-| Tax | Single line of text |
-| TotalAmount | Single line of text |
-| Currency | Single line of text |
-| PaymentTerms | Single line of text |
-
-## Running the Application
-
-This system consists of a backend (FastAPI) and a frontend (Streamlit).
-
-### 1. Start the FastAPI Server
 ```bash
-# Activate virtual environment
-.venv\Scripts\activate
+##########################
+# Groq / LLM
+##########################
+GROQ_API_KEY=your_groq_key_here
+GROQ_MODEL=llama-3.1-8b-instant
+MAX_NEW_TOKENS=1024
 
-# Start server
+##########################
+# OCR / EasyOCR (app/)
+##########################
+OCR_LANGUAGES=en
+OCR_DPI=200
+# 0 = all pages, N = only first N pages
+OCR_MAX_PAGES=0
+OCR_MAX_IMAGE_SIZE=2000
+OCR_FAST_MODE=true
+
+##########################
+# Azure / SharePoint (both app/ and vision_model/)
+##########################
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+SHAREPOINT_SITE_ID=your-sharepoint-site-id
+SHAREPOINT_LIST_ID=your-sharepoint-list-id
+
+##########################
+# Google Forms / Sheets (vision_model/)
+##########################
+# Absolute path to your Google service account key JSON (do NOT commit)
+GOOGLE_SERVICE_ACCOUNT_JSON_PATH=D:\keys\invoice-parser-sa.json
+
+# ID from your responses sheet URL:
+# https://docs.google.com/spreadsheets/d/<THIS_PART>/edit#gid=...
+GFORM_SPREADSHEET_ID=1n72-zW2ThFaBGEX9PAH6oIp3EkFCBNmYcYOu8d_Ufk0
+
+# Tab name at bottom of Sheet (usually "Form Responses 1")
+GFORM_WORKSHEET_NAME=Form Responses 1
+
+##########################
+# Misc
+##########################
+# If using app/ocr.py PDF2Image with Poppler
+POPPLER_PATH=
+```
+
+### Google service account JSON
+
+The file at `GOOGLE_SERVICE_ACCOUNT_JSON_PATH` must be a **Google service account key**, with fields like:
+
+```json
+{
+  "type": "service_account",
+  "project_id": "...",
+  "private_key_id": "...",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+  "client_email": "....iam.gserviceaccount.com",
+  "client_id": "...",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/....iam.gserviceaccount.com"
+}
+```
+
+Share your **Form responses Sheet** with this `client_email` as Viewer/Editor.
+
+---
+
+## 5. Running the FastAPI Backend (`app/`)
+
+In one terminal:
+
+```bash
+cd D:\invoice_parser
+.\.venv\Scripts\activate
+
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-Wait for the console to show "Model loaded. Ready to process invoices."
 
-### 2. Start the Streamlit UI
-Open a **new terminal** window:
-```bash
-# Navigate to project and activate venv
-cd d:\invoice_parser
-.venv\Scripts\activate
+This will:
+- Initialize EasyOCR for PDFs/images
+- Initialize Groq LLM for text → JSON
+- Expose `/parse-invoice`
 
-# Start UI
-streamlit run app/ui.py
-```
-The browser will automatically open at http://localhost:8501
+### API usage
 
-## API Usage
-
-### Parse Invoice
 ```bash
 curl -X POST "http://localhost:8000/parse-invoice" \
   -H "accept: application/json" \
   -F "file=@path/to/invoice.pdf"
 ```
 
-### Response Format
+Returns:
+- `parsed_data`: structured invoice (simple schema used by `app/`)  
+- `sharepoint_status`: `success` / `failed` / `skipped`
+
+---
+
+## 6. Running the Vision Streamlit UI (`vision_model/`)
+
+In another terminal:
+
+```bash
+cd D:\invoice_parser
+.\.venv\Scripts\activate
+
+cd vision_model
+streamlit run streamlit_app.py
+```
+
+The UI will open in browser (default `http://localhost:8501`).
+
+### Flow
+
+1. **Upload invoice** (PDF or image).  
+2. Vision model `meta-llama/llama-4-scout-17b-16e-instruct` extracts raw text.  
+3. JSON model `llama-3.1-8b-instant` produces nested JSON with schema:
+   - `InvoiceNumber`, `InvoiceDate`, `DueDate`
+   - `Vendor` (BusinessName, Address, GSTIN, PAN, Phone, Email, CIN)
+   - `Buyer` (Name, BillingAddress, ShippingAddress, GSTIN, Phone, Email)
+   - `Items` (Description, Quantity, Unit, RatePerUnit, Discount, TaxableValue, GSTRatePercent, CGSTAmount, SGSTAmount, IGSTAmount, Cess, TotalItemAmount)
+   - `Totals` (Subtotal, TotalTaxableValue, TotalCGST, TotalSGST, TotalIGST, TotalCess, RoundOff, GrandTotal, AmountInWords)
+   - `PaymentDetails` (ModeOfPayment, UPIID, BankName, AccountNumber, IFSCCode, TransactionReferenceID)
+4. UI shows:
+   - Raw extracted text (for debugging)
+   - Structured JSON
+5. Action buttons:
+   - **⬇️ Download JSON** — saves the structured JSON
+   - **📤 Upload to SharePoint** — sends flattened data to your SharePoint list
+   - **📥 Upload to Google Form (Sheet)** — appends a new row to the Form’s response sheet
+
+### Why InvoiceNumber / InvoiceDate / DueDate might be empty
+
+The LLM now has an explicit schema that **includes** these fields, so new extractions will produce:
+
 ```json
 {
-  "parsed_data": {
-    "invoice_number": "INV-2024-001",
-    "invoice_date": "2024-01-15",
-    "vendor_name": "ABC Corp",
-    "vendor_gst": "29ABCDE1234F1Z5",
-    "customer_name": "XYZ Ltd",
-    "subtotal": "10000.00",
-    "tax": "1800.00",
-    "total_amount": "11800.00",
-    "currency": "INR",
-    "payment_terms": "Net 30"
-  },
-  "sharepoint_status": "success",
-  "error": ""
+  "InvoiceNumber": "...",
+  "InvoiceDate": "...",
+  "DueDate": "...",
+  "Vendor": { ... },
+  "Buyer": { ... },
+  "Items": [ ... ],
+  "Totals": { ... },
+  "PaymentDetails": { ... }
 }
 ```
 
-### Health Check
-```bash
-curl http://localhost:8000/health
-```
+If an older JSON file (e.g. `invoice3_parsed.json`) doesn’t have these keys, they will be blank in the sheet. Re‑run the invoice through the Vision UI to regenerate JSON with the updated schema.
 
-## Project Structure
+---
 
-```
+## 7. Google Form / Sheet Integration
+
+Your Google Form should have questions that map to these sheet headers:
+
+- `InvoiceNumber`, `InvoiceDate`, `DueDate`
+- `Vendor Business Name`, `Vendor Address`, `Vendor GSTIN`, `Vendor Phone`, `Vendor Email`
+- `Buyer Name`, `Buyer Billing Address`, `Buyer GSTIN`, `Buyer Phone`, `Buyer Email`
+- `Subtotal`, `Total Taxable Value`, `Total CGST`, `Total SGST`, `Grand Total`, `Amount In Words`
+
+In `vision_core.py`, `upload_to_gforms_sheet` does:
+
+- Read header row (`ws.row_values(1)`)
+- Build a dict `values_by_header` from your JSON
+- Append a new row in the same column order
+
+So when you press **“Upload to Google Form (Sheet)”** in the Vision UI, it is equivalent to submitting a Form with those answers.
+
+> Items array is not currently written to the sheet. You can extend it by adding columns like `Item1 Description`, `Item1 Quantity`, etc., and mapping from `Items[0]`, `Items[1]`, etc.
+
+---
+
+## 8. SharePoint Integration (Quick Summary)
+
+1. Register an app in Azure AD.  
+2. Grant `Sites.ReadWrite.All` application permission, admin consent.  
+3. Get `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`.  
+4. Use Graph API or UI to find your `SHAREPOINT_SITE_ID` and `SHAREPOINT_LIST_ID`.  
+5. Create list columns matching those used in `map_vision_json_to_sharepoint` or `app/sharepoint.py`.
+
+Vision UI and FastAPI backend both use these env vars.
+
+---
+
+## 9. Project Structure
+
+```text
 invoice_parser/
 ├── app/
 │   ├── main.py          # FastAPI entry point
-│   ├── ocr.py           # OCR processing
-│   ├── llm_parser.py    # LLM parsing
+│   ├── ocr.py           # EasyOCR-based OCR
+│   ├── llm_parser.py    # Groq-based LLM parsing (simple schema)
 │   ├── sharepoint.py    # SharePoint integration
-│   ├── schemas.py       # Pydantic models
-│   ├── config.py        # Configuration
-│   └── utils.py         # Utilities
-├── temp/                # Uploaded files (auto-cleaned)
+│   ├── schemas.py       # Pydantic models for API
+│   ├── config.py        # Global config and env loading
+│   └── utils.py         # File helpers, validation, text cleaning
+├── vision_model/
+│   ├── streamlit_app.py # Vision-based Streamlit UI
+│   ├── vision_core.py   # Groq Vision + JSON core + Sheets/SharePoint helpers
+│   └── invoice-optimised.ipynb # Experiment notebook
+├── multi_llm_rag/       # Optional RAG demo with LangChain + Groq
 ├── requirements.txt
-├── .env.example
+├── .env                 # Your local configuration (not committed)
 └── README.md
 ```
 
-## Environment Variables
+---
 
-| Variable | Description |
-|----------|-------------|
-| `AZURE_TENANT_ID` | Azure AD Tenant ID |
-| `AZURE_CLIENT_ID` | Azure App Client ID |
-| `AZURE_CLIENT_SECRET` | Azure App Secret |
-| `SHAREPOINT_SITE_ID` | SharePoint Site ID |
-| `SHAREPOINT_LIST_ID` | SharePoint List ID |
-| `MODEL_NAME` | HuggingFace model (default: google/flan-t5-base) |
-| `TESSERACT_CMD` | Path to Tesseract executable |
-| `POPPLER_PATH` | Path to Poppler bin folder |
+## 10. Troubleshooting
 
-## Troubleshooting
+- **Groq errors**:  
+  - Check `GROQ_API_KEY` in `.env`  
+  - Make sure model name is valid (see [`https://console.groq.com/docs/models`](https://console.groq.com/docs/models))
 
-### OCR not working
-- Verify Tesseract is installed: `tesseract --version`
-- Check `TESSERACT_CMD` path in `.env`
+- **Google Sheets errors**:  
+  - Ensure `GOOGLE_SERVICE_ACCOUNT_JSON_PATH` points to a valid service‑account key JSON.  
+  - Share the responses sheet with `client_email` from that JSON.  
+  - Check `GFORM_SPREADSHEET_ID` and `GFORM_WORKSHEET_NAME` are correct.
 
-### PDF conversion fails
-- Install Poppler and add to PATH
-- Or set `POPPLER_PATH` in `.env`
+- **SharePoint errors**:  
+  - Verify Azure app permissions and admin consent.  
+  - Make sure site/list IDs and credentials in `.env` are correct.
 
-### CUDA not detected
-- Install CUDA-compatible PyTorch: `pip install torch --index-url https://download.pytorch.org/whl/cu121`
+- **Performance (OCR)**:  
+  - For huge PDFs, adjust `OCR_DPI`, `OCR_MAX_PAGES`, `OCR_MAX_IMAGE_SIZE` in `.env`.
 
-### SharePoint auth fails
-- Verify admin consent is granted
-- Check all credentials in `.env`
+---
 
-## License
+## 11. License
 
 MIT
